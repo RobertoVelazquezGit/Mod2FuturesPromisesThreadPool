@@ -112,6 +112,14 @@ struct DataAnalysis {
         std::uniform_int_distribution<> timeDist(100, 1000);
         auto processingTime = std::chrono::milliseconds(timeDist(gen));
 
+        // sleep_for uses strongly typed std::chrono duration objects instead of raw integers.
+        // This makes the time unit explicit and prevents mistakes caused by ambiguous values.
+        //
+        // Examples:
+        // std::this_thread::sleep_for(std::chrono::seconds(1));        // 1 second
+        // std::this_thread::sleep_for(std::chrono::milliseconds(500)); // 500 milliseconds
+        // std::this_thread::sleep_for(std::chrono::microseconds(10));  // 10 microseconds
+        // std::this_thread::sleep_for(std::chrono::nanoseconds(100));  // 100 nanoseconds
         std::this_thread::sleep_for(processingTime);
 
         // Simulate potential failures
