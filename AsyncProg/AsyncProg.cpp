@@ -18,9 +18,9 @@ private:
 public:
     // Submit async task with custom executor
     template<typename Func, typename... Args>
-    auto submitTask(Func&& func, Args&&... args) -> std::future<T> {
+	auto submitTask(Func&& func, Args&&... args) -> std::future<T> {  // universal reference to allow perfect forwarding of the function and its arguments  
         auto task = std::make_shared<std::packaged_task<T()>>(
-            std::bind(std::forward<Func>(func), std::forward<Args>(args)...)
+			std::bind(std::forward<Func>(func), std::forward<Args>(args)...)  // perfect forwarding of the function and its arguments to avoid unnecessary copies   
         );
 
         std::future<T> future = task->get_future();
@@ -148,7 +148,7 @@ int main() {
     for (int i = 1; i <= 20; ++i) {
         int complexity = 10 + (i % 5) * 5; // Varying complexity levels
         auto future = manager.submitTask(DataAnalysis::processDataset, i, complexity);
-        futures.push_back(std::move(future));
+		futures.push_back(std::move(future));  // not used any longer, do not use because was already moved inside the submitTask function  
     }
 
     // Monitor progress
