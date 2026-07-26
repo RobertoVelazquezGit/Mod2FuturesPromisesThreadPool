@@ -76,6 +76,7 @@ private:
                 }
 
                 if (!taskQueue_.empty()) {
+                    // const_cast<Task&> because the declaration std::priority_queue::top() is const T& top() const;
                     task = std::move(const_cast<Task&>(taskQueue_.top()));
                     taskQueue_.pop();
                     hasTask = true;
@@ -98,6 +99,7 @@ private:
                 }
 
                 auto endTime = std::chrono::steady_clock::now();
+                // Measure the task execution time and store it in milliseconds.
                 auto duration = std::chrono::duration<double, std::milli>(endTime - startTime);
 
                 updatePerformanceMetrics(duration.count());
@@ -166,7 +168,7 @@ public:
     void submit(Func&& func, TaskPriority priority = TaskPriority::NORMAL, const std::string& taskId = "") {
         {
             std::lock_guard<std::mutex> lock(queueMutex_);
-            taskQueue_.emplace(std::forward<Func>(func), priority, taskId);
+			taskQueue_.emplace(std::forward<Func>(func), priority, taskId);  // building a Task object in place 
         }
 
         condition_.notify_one();
