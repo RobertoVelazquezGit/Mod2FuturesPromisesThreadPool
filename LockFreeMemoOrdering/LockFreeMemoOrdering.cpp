@@ -38,8 +38,9 @@ private:
 
     // Memory reclamation using hazard pointers (simplified)
     static constexpr size_t MAX_HAZARD_POINTERS = 16;
-    // Each thread has its own independent instance of this variable.
-    thread_local static std::array<std::atomic<Node*>, MAX_HAZARD_POINTERS> hazardPointers;
+    // thread_local: Each thread has its own independent instance of this variable.
+    // std::array is like a vector of fixed size, each element is an atomic pointer to Node 
+	thread_local static std::array<std::atomic<Node*>, MAX_HAZARD_POINTERS> hazardPointers;  
     static std::atomic<size_t> hazardPointerIndex;
 
     Node* acquireHazardPointer(Node* node) {
@@ -79,6 +80,8 @@ public:
             delete node;
         }
     }
+
+    // ToDo
 
     void enqueue(T item) {
         Node* newNode = new Node(std::move(item));
