@@ -15,6 +15,20 @@ Test with burst loads, sustained loads, and mixed priority scenarios.
 #include <thread>
 #include <functional>
 #include <iostream>
+#include <chrono>
+#include <string>
+
+//#define BASIC_TEST_001
+//#define PRIORITY_TEST_002
+//#define BURST_LOAD_TEST_003
+#define SUSTAINED_LOAD_TEST_004
+
+#if (defined(BASIC_TEST_001) + \
+     defined(PRIORITY_TEST_002) + \
+     defined(BURST_LOAD_TEST_003) + \
+     defined(SUSTAINED_LOAD_TEST_004)) != 1
+#error "Exactly one test must be enabled."
+#endif
 
 enum class TaskPriority {
     LOW = 1,
@@ -45,18 +59,6 @@ struct Task {
     Task(Task&&) = default;
     Task& operator=(Task&&) = default;
 };
-
-//struct Task {
-//    std::function<void()> function;
-//    TaskPriority priority;
-//    std::chrono::steady_clock::time_point submitTime;
-//    std::string taskId;
-//
-//    Task(std::function<void()> func, TaskPriority prio, const std::string& id = "")
-//        : function(std::move(func)), priority(prio),
-//        submitTime(std::chrono::steady_clock::now()), taskId(id) {
-//    }
-//};
 
 struct TaskComparator {
     // For std::priority_queue: if compare(a, b) is true,
@@ -93,6 +95,10 @@ private:
     std::atomic<double> averageTaskTime_{ 0.0 };
     std::atomic<size_t> queueHighWaterMark_{ 0 };
 
+#ifdef PRIORITY_TEST_002
+    std::atomic<bool> startProcessing_{ false };
+#endif
+
     void workerThread()
     {
         while (true)
@@ -105,7 +111,12 @@ private:
 
                 condition_.wait(lock, [this]
                     {
+#ifdef PRIORITY_TEST_002
+                        return shutdown_.load() ||
+                            (startProcessing_.load() && !taskQueue_.empty());
+#else
                         return shutdown_.load() || !taskQueue_.empty();
+#endif
                     });
 
                 // Exit only when shutdown has been requested
@@ -155,59 +166,6 @@ private:
 
         currentThreads_.fetch_sub(1);
     }
-
-    //void workerThread() {
-    //    while (!shutdown_.load()) {
-    //        Task task([]() {}, TaskPriority::LOW);
-    //        bool hasTask = false;
-
-    //        {
-    //            std::unique_lock<std::mutex> lock(queueMutex_);
-
-    //            condition_.wait(lock, [this] {
-    //                return !taskQueue_.empty() || shutdown_.load();
-    //                });
-
-    //            if (shutdown_.load() && taskQueue_.empty()) {
-    //                break;
-    //            }
-
-    //            if (!taskQueue_.empty()) {
-    //                // const_cast<Task&> because the declaration std::priority_queue::top() is const T& top() const;
-    //                task = std::move(const_cast<Task&>(taskQueue_.top()));
-    //                taskQueue_.pop();
-    //                hasTask = true;
-    //            }
-    //        }
-
-    //        if (hasTask) {
-    //            activeThreads_.fetch_add(1);
-
-    //            auto startTime = std::chrono::steady_clock::now();
-
-    //            try {
-    //                task.function();
-    //            }
-    //            catch (const std::exception& e) {
-    //                std::cout << "Task " << task.taskId << " failed: " << e.what() << std::endl;
-    //            }
-    //            catch (...) {
-    //                std::cout << "Task " << task.taskId << " failed with unknown exception" << std::endl;
-    //            }
-
-    //            auto endTime = std::chrono::steady_clock::now();
-    //            // Measure the task execution time and store it in milliseconds.
-    //            auto duration = std::chrono::duration<double, std::milli>(endTime - startTime);
-
-    //            updatePerformanceMetrics(duration.count());
-
-    //            totalTasksProcessed_.fetch_add(1);
-    //            activeThreads_.fetch_sub(1);
-    //        }
-    //    }
-
-    //    currentThreads_.fetch_sub(1);
-    //}
 
     void updatePerformanceMetrics(double taskDuration) {
         // Simple exponential moving average
@@ -323,5 +281,229 @@ public:
         std::cout << "Average task time: " << stats.averageTaskTime << " ms" << std::endl;
         std::cout << "Queue high water mark: " << stats.queueHighWaterMark << std::endl;
     }
+
+#ifdef PRIORITY_TEST_002
+    void startProcessing()
+    {
+        startProcessing_.store(true);
+        condition_.notify_all();
+    }
+#endif
 };
+
+#ifdef BASIC_TEST_001
+int main()
+{
+    DynamicThreadPool pool(2, 4);
+
+    pool.submit(
+        []()
+        {
+            std::cout << "LOW task started\n";
+            std::this_thread::sleep_for(std::chrono::milliseconds(800));
+            std::cout << "LOW task finished\n";
+        },
+        TaskPriority::LOW,
+        "LOW_1");
+
+    pool.submit(
+        []()
+        {
+            std::cout << "HIGH task started\n";
+            std::this_thread::sleep_for(std::chrono::milliseconds(300));
+            std::cout << "HIGH task finished\n";
+        },
+        TaskPriority::HIGH,
+        "HIGH_1");
+
+    pool.submit(
+        []()
+        {
+            std::cout << "CRITICAL task started\n";
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            std::cout << "CRITICAL task finished\n";
+        },
+        TaskPriority::CRITICAL,
+        "CRITICAL_1");
+
+    pool.submit(
+        []()
+        {
+            std::cout << "NORMAL task started\n";
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+            std::cout << "NORMAL task finished\n";
+        },
+        TaskPriority::NORMAL,
+        "NORMAL_1");
+
+    std::this_thread::sleep_for(std::chrono::seconds(3));
+
+    pool.shutdown();
+
+    return 0;
+}
+#elif defined(PRIORITY_TEST_002)
+int main()
+{
+    // Single worker thread to clearly demonstrate priority scheduling.
+    DynamicThreadPool pool(1, 1);
+
+    std::cout << "\n=== Priority Scheduling Test ===\n\n";
+
+    pool.submit(
+        []()
+        {
+            std::cout << "Executing LOW task\n";
+        },
+        TaskPriority::LOW,
+        "LOW");
+
+    pool.submit(
+        []()
+        {
+            std::cout << "Executing NORMAL task\n";
+        },
+        TaskPriority::NORMAL,
+        "NORMAL");
+
+    pool.submit(
+        []()
+        {
+            std::cout << "Executing HIGH task\n";
+        },
+        TaskPriority::HIGH,
+        "HIGH");
+
+    pool.submit(
+        []()
+        {
+            std::cout << "Executing CRITICAL task\n";
+        },
+        TaskPriority::CRITICAL,
+        "CRITICAL");
+
+    // All tasks have been queued.
+    // Allow worker threads to start processing them.
+    pool.startProcessing();
+
+    // Allow all tasks to complete.
+    std::this_thread::sleep_for(std::chrono::seconds(1));
+
+    pool.shutdown();
+
+    return 0;
+}
+#elif defined(BURST_LOAD_TEST_003)
+int main()
+{
+    constexpr size_t NUM_TASKS = 100;
+
+    DynamicThreadPool pool(2, 8);
+
+    std::cout << "\n=== Burst Load Test ===\n";
+    std::cout << "Submitting " << NUM_TASKS << " tasks...\n\n";
+
+    for (size_t i = 0; i < NUM_TASKS; ++i)
+    {
+        TaskPriority priority;
+
+        switch (i % 4)
+        {
+        case 0: priority = TaskPriority::LOW;      break;
+        case 1: priority = TaskPriority::NORMAL;   break;
+        case 2: priority = TaskPriority::HIGH;     break;
+        default:priority = TaskPriority::CRITICAL; break;
+        }
+
+        pool.submit(
+            [i]()
+            {
+                std::this_thread::sleep_for(
+                    std::chrono::milliseconds(100));
+            },
+            priority,
+            "Task_" + std::to_string(i));
+    }
+
+    // Monitor the thread pool while it is processing the burst.
+    while (true)
+    {
+        auto stats = pool.getStats();
+
+        pool.printStats();
+
+        if (stats.totalTasksProcessed >= NUM_TASKS)
+            break;
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    }
+
+    pool.shutdown();
+
+    return 0;
+}
+#elif defined(SUSTAINED_LOAD_TEST_004)  
+int main()
+{
+    constexpr auto TEST_DURATION = std::chrono::seconds(10);
+
+    DynamicThreadPool pool(2, 8);
+
+    std::cout << "\n=== Sustained Load Test ===\n\n";
+
+    auto start = std::chrono::steady_clock::now();
+
+    size_t taskId = 0;
+
+    // std::chrono handles unit conversion automatically during the comparison.
+    while (std::chrono::steady_clock::now() - start < TEST_DURATION)
+    {
+        TaskPriority priority;
+
+        switch (taskId % 4)
+        {
+        case 0: priority = TaskPriority::LOW;      break;
+        case 1: priority = TaskPriority::NORMAL;   break;
+        case 2: priority = TaskPriority::HIGH;     break;
+        default:priority = TaskPriority::CRITICAL; break;
+        }
+
+        pool.submit(
+            [/*taskId*/]()
+            {
+                std::this_thread::sleep_for(
+                    std::chrono::milliseconds(150));
+            },
+            priority,
+            "Task_" + std::to_string(taskId));
+
+        ++taskId;
+
+        // Generate a constant stream of incoming tasks.
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+        if ((taskId % 20) == 0)
+        {
+            pool.printStats();
+            std::cout << std::endl;
+        }
+    }
+
+    std::cout << "\nWaiting for remaining tasks...\n";
+
+    while (pool.getStats().queueSize > 0 ||
+        pool.getStats().activeThreads > 0)
+    {
+        pool.printStats();
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    }
+
+    std::cout << "\nFinal statistics\n";
+    pool.printStats();
+
+    pool.shutdown();
+
+    return 0;
+}
+#endif
 
