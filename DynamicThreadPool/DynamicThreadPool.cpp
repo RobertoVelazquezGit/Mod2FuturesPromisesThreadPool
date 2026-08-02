@@ -1,3 +1,14 @@
+/*
+Build an enterprise - grade thread pool that supports priority - based task scheduling, dynamic thread scaling, and comprehensive resource management for high - load scenarios.
+Practice
+Using the code below, create a load testing scenario that :
+Submits tasks with different priorities and processing times
+Monitors thread pool scaling behavior under varying loads
+Compares performance with different min / max thread configurations
+Analyzes queue dynamics and thread utilization patterns
+Test with burst loads, sustained loads, and mixed priority scenarios.
+*/
+
 #include <queue>
 #include <condition_variable>
 #include <atomic>
@@ -18,11 +29,34 @@ struct Task {
     std::chrono::steady_clock::time_point submitTime;
     std::string taskId;
 
-    Task(std::function<void()> func, TaskPriority prio, const std::string& id = "")
-        : function(std::move(func)), priority(prio),
-        submitTime(std::chrono::steady_clock::now()), taskId(id) {
+    Task(std::function<void()> func,
+        TaskPriority prio,
+        const std::string& id = "")
+        : function(std::move(func)),
+        priority(prio),
+        submitTime(std::chrono::steady_clock::now()),
+        taskId(id)
+    {
     }
+
+    Task(const Task&) = default;
+    Task& operator=(const Task&) = default;
+
+    Task(Task&&) = default;
+    Task& operator=(Task&&) = default;
 };
+
+//struct Task {
+//    std::function<void()> function;
+//    TaskPriority priority;
+//    std::chrono::steady_clock::time_point submitTime;
+//    std::string taskId;
+//
+//    Task(std::function<void()> func, TaskPriority prio, const std::string& id = "")
+//        : function(std::move(func)), priority(prio),
+//        submitTime(std::chrono::steady_clock::now()), taskId(id) {
+//    }
+//};
 
 struct TaskComparator {
     // For std::priority_queue: if compare(a, b) is true,
@@ -59,48 +93,58 @@ private:
     std::atomic<double> averageTaskTime_{ 0.0 };
     std::atomic<size_t> queueHighWaterMark_{ 0 };
 
-    void workerThread() {
-        while (!shutdown_.load()) {
+    void workerThread()
+    {
+        while (true)
+        {
             Task task([]() {}, TaskPriority::LOW);
             bool hasTask = false;
 
             {
                 std::unique_lock<std::mutex> lock(queueMutex_);
 
-                condition_.wait(lock, [this] {
-                    return !taskQueue_.empty() || shutdown_.load();
+                condition_.wait(lock, [this]
+                    {
+                        return shutdown_.load() || !taskQueue_.empty();
                     });
 
-                if (shutdown_.load() && taskQueue_.empty()) {
+                // Exit only when shutdown has been requested
+                // and there are no remaining tasks to process.
+                if (shutdown_.load() && taskQueue_.empty())
+                {
                     break;
                 }
 
-                if (!taskQueue_.empty()) {
-                    // const_cast<Task&> because the declaration std::priority_queue::top() is const T& top() const;
-                    task = std::move(const_cast<Task&>(taskQueue_.top()));
-                    taskQueue_.pop();
-                    hasTask = true;
-                }
+                // At this point, the queue is guaranteed to contain at least one task.
+                task = std::move(const_cast<Task&>(taskQueue_.top()));
+                taskQueue_.pop();
+                hasTask = true;
             }
 
-            if (hasTask) {
+            if (hasTask)
+            {
                 activeThreads_.fetch_add(1);
 
                 auto startTime = std::chrono::steady_clock::now();
 
-                try {
+                try
+                {
                     task.function();
                 }
-                catch (const std::exception& e) {
-                    std::cout << "Task " << task.taskId << " failed: " << e.what() << std::endl;
+                catch (const std::exception& e)
+                {
+                    std::cout << "Task " << task.taskId
+                        << " failed: " << e.what() << std::endl;
                 }
-                catch (...) {
-                    std::cout << "Task " << task.taskId << " failed with unknown exception" << std::endl;
+                catch (...)
+                {
+                    std::cout << "Task " << task.taskId
+                        << " failed with unknown exception" << std::endl;
                 }
 
                 auto endTime = std::chrono::steady_clock::now();
-                // Measure the task execution time and store it in milliseconds.
-                auto duration = std::chrono::duration<double, std::milli>(endTime - startTime);
+                auto duration =
+                    std::chrono::duration<double, std::milli>(endTime - startTime);
 
                 updatePerformanceMetrics(duration.count());
 
@@ -111,6 +155,59 @@ private:
 
         currentThreads_.fetch_sub(1);
     }
+
+    //void workerThread() {
+    //    while (!shutdown_.load()) {
+    //        Task task([]() {}, TaskPriority::LOW);
+    //        bool hasTask = false;
+
+    //        {
+    //            std::unique_lock<std::mutex> lock(queueMutex_);
+
+    //            condition_.wait(lock, [this] {
+    //                return !taskQueue_.empty() || shutdown_.load();
+    //                });
+
+    //            if (shutdown_.load() && taskQueue_.empty()) {
+    //                break;
+    //            }
+
+    //            if (!taskQueue_.empty()) {
+    //                // const_cast<Task&> because the declaration std::priority_queue::top() is const T& top() const;
+    //                task = std::move(const_cast<Task&>(taskQueue_.top()));
+    //                taskQueue_.pop();
+    //                hasTask = true;
+    //            }
+    //        }
+
+    //        if (hasTask) {
+    //            activeThreads_.fetch_add(1);
+
+    //            auto startTime = std::chrono::steady_clock::now();
+
+    //            try {
+    //                task.function();
+    //            }
+    //            catch (const std::exception& e) {
+    //                std::cout << "Task " << task.taskId << " failed: " << e.what() << std::endl;
+    //            }
+    //            catch (...) {
+    //                std::cout << "Task " << task.taskId << " failed with unknown exception" << std::endl;
+    //            }
+
+    //            auto endTime = std::chrono::steady_clock::now();
+    //            // Measure the task execution time and store it in milliseconds.
+    //            auto duration = std::chrono::duration<double, std::milli>(endTime - startTime);
+
+    //            updatePerformanceMetrics(duration.count());
+
+    //            totalTasksProcessed_.fetch_add(1);
+    //            activeThreads_.fetch_sub(1);
+    //        }
+    //    }
+
+    //    currentThreads_.fetch_sub(1);
+    //}
 
     void updatePerformanceMetrics(double taskDuration) {
         // Simple exponential moving average
@@ -227,5 +324,4 @@ public:
         std::cout << "Queue high water mark: " << stats.queueHighWaterMark << std::endl;
     }
 };
-
 
