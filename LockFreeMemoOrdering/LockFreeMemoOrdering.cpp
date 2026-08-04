@@ -69,6 +69,7 @@ private:
 
 public:
     LockFreeQueue() {
+		// the queue is initialized with a dummy node to simplify the enqueue and dequeue operations    
         Node* dummy = new Node();
         head_.store(dummy, std::memory_order_relaxed);
         tail_.store(dummy, std::memory_order_relaxed);
@@ -81,10 +82,8 @@ public:
         }
     }
 
-    // ToDo
-
     void enqueue(T item) {
-        Node* newNode = new Node(std::move(item));
+        Node* newNode = new Node(std::move(item));  // it is moving the item, not moving Node
 
         while (true) {
             Node* last = tail_.load(std::memory_order_acquire);
@@ -92,10 +91,22 @@ public:
 
             if (last == tail_.load(std::memory_order_acquire)) {
                 if (next == nullptr) {
+// Simplified prototype bool compare_exchange_weak(T& expected, T desired);
+// Internally :
+// if (counter == expected)
+// {
+//    counter = desired;
+//    return true;
+// }
+// else
+// {
+//    expected = counter;
+//    return false;
+// }
                     // Try to link new node at the end of the list
                     if (last->next.compare_exchange_weak(next, newNode,
-                        std::memory_order_release,
-                        std::memory_order_relaxed)) {
+                        std::memory_order_release /*success_order*/,
+                        std::memory_order_relaxed /*failure_order*/)) {
                         // Successfully added new node, try to swing tail
                         tail_.compare_exchange_weak(last, newNode,
                             std::memory_order_release,
@@ -143,10 +154,11 @@ public:
                     }
 
                     // Try to swing head to next node
+					// next becomes the new dummy node, and first can be safely deleted if no hazard pointers point to it   
                     if (head_.compare_exchange_weak(first, next,
                         std::memory_order_release,
                         std::memory_order_relaxed)) {
-                        result = *data;
+                        result = *data;  
                         delete data;
                         size_.fetch_sub(1, std::memory_order_relaxed);
 
@@ -171,9 +183,11 @@ public:
     }
 };
 
+// Just initializing the static members of the LockFreeQueue class template 
+
 // Thread-local storage initialization
 template<typename T>
-thread_local std::array<std::atomic<typename LockFreeQueue<T>::Node*>, LockFreeQueue<T>::MAX_HAZARD_POINTERS>
+thread_local std::array<std::atomic<typename /*typename because Node is a type*/LockFreeQueue<T>::Node*>, LockFreeQueue<T>::MAX_HAZARD_POINTERS>
 LockFreeQueue<T>::hazardPointers{};
 
 template<typename T>
