@@ -17,7 +17,11 @@ Experiment with different memory ordering constraints and their impact on correc
 #include <vector>
 #include <iostream>
 
-
+// Michael & Scott Lock-Free Queue algorithm    
+// head                             taol
+// |                                |
+// v                                v
+// Dummy-- > Node1-- > Node2-- > Node3*/
 template<typename T>
 class LockFreeQueue {
 private:
@@ -83,7 +87,11 @@ public:
     }
 
     void enqueue(T item) {
-        Node* newNode = new Node(std::move(item));  // it is moving the item, not moving Node
+        // Moves the item (T), not the Node.
+        // Node(Node&&) would only be called by:
+        // Node n1("Hello");
+        // Node n2(std::move(n1));
+        Node* newNode = new Node(std::move(item));
 
         while (true) {
             Node* last = tail_.load(std::memory_order_acquire);
@@ -174,6 +182,16 @@ public:
         }
     }
 
+//    head
+//     |
+//     v
+//    +-------+     +------+     +------+
+//    | Dummy | --> |  10  | --> | 20   |
+//    +-------+     +------+     +------+
+//                                ^
+//                                |
+//                               tail
+
     bool empty() const {
         return size_.load(std::memory_order_acquire) == 0;
     }
@@ -193,6 +211,7 @@ LockFreeQueue<T>::hazardPointers{};
 template<typename T>
 std::atomic<size_t> LockFreeQueue<T>::hazardPointerIndex{ 0 };
 
+// Treiber Stack algorithm for lock-free stack implementation   
 // Lock-free stack for comparison
 template<typename T>
 class LockFreeStack {
@@ -210,15 +229,45 @@ private:
 public:
     void push(T item) {
         Node* newNode = new Node(std::move(item));
-        newNode->next = head_.load(std::memory_order_relaxed);
+        newNode->next = head_.load(std::memory_order_relaxed/*the same here*/);
 
         while (!head_.compare_exchange_weak(newNode->next, newNode,
             std::memory_order_release,
-            std::memory_order_relaxed)) {
+            std::memory_order_relaxed/*the same here, this is when fail*/)) {
             // Loop until successful
         }
-
         size_.fetch_add(1, std::memory_order_relaxed);
+        // Simplified prototype bool compare_exchange_weak(T& expected, T desired);
+        // Internally :
+        // if (counter == expected)
+        // {
+        //    counter = desired;
+        //    return true;
+        // }
+        // else
+        // {
+        //    expected = counter;
+        //    return false;
+        // }
+        //    head
+        //    |
+        //    v
+        //    +------+
+        //    | 30   |
+        //    +------+
+        //    |
+        //    v
+        //    +------+
+        //    | 20   |
+        //    +------+
+        //    |
+        //    v
+        //    +------+
+        //    | 10   |
+        //    +------+
+        //    |
+        //    v
+        //    nullptr
     }
 
     bool pop(T& result) {
