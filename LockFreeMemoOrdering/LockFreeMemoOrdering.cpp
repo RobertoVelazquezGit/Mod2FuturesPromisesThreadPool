@@ -9,6 +9,17 @@ Measure contention and scalability characteristics
 Experiment with different memory ordering constraints and their impact on correctness and performance.
 */
 
+//#define BASIC_MAIN_TEST_001
+#define TEST_CONFIGURATIONS_002
+
+#if (defined(BASIC_MAIN_TEST_001) + \
+     defined(TEST_CONFIGURATIONS_002) + \
+     defined(BURST_LOAD_TEST_003) + \
+     defined(SUSTAINED_LOAD_TEST_004)) != 1
+#error "Exactly one test must be enabled."
+#endif
+
+
 #include <atomic>
 #include <memory>
 #include <type_traits>
@@ -16,9 +27,15 @@ Experiment with different memory ordering constraints and their impact on correc
 #include <thread>
 #include <vector>
 #include <iostream>
+#include <chrono>
+#include <queue>
+#include <mutex>
+#include <array>
+#include <array>
+#include <iostream>
 
 // Michael & Scott Lock-Free Queue algorithm    
-// head                             taol
+// head                             tail
 // |                                |
 // v                                v
 // Dummy-- > Node1-- > Node2-- > Node3*/
@@ -172,7 +189,10 @@ public:
 
                         // Safe to reclaim first node (simplified - in production use proper hazard pointers)
                         if (!isHazardous(first)) {
-                            delete first;
+                            // TODO:
+                            // Memory reclamation is intentionally disabled.
+                            // This avoids use-after-free while studying the lock-free algorithm.
+                            // Commented out delete first;
                         }
 
                         return true;
@@ -300,6 +320,51 @@ public:
     }
 };
 
+template<typename T>
+class MutexQueue
+{
+private:
+    std::queue<T> queue_;
+    mutable std::mutex mutex_;
+
+public:
+
+    MutexQueue() = default;
+
+    void enqueue(T item)
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        queue_.push(std::move(item));
+    }
+
+    bool dequeue(T& result)
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+
+        if (queue_.empty())
+        {
+            return false;
+        }
+
+        result = std::move(queue_.front());
+        queue_.pop();
+
+        return true;
+    }
+
+    bool empty() const
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return queue_.empty();
+    }
+
+    size_t size() const
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return queue_.size();
+    }
+};
+
 // Performance benchmarking utility
 class LockFreeBenchmark {
 public:
@@ -321,7 +386,8 @@ public:
 
                 int itemsPerProducer = operations / producerThreads;
                 for (int j = 0; j < itemsPerProducer; ++j) {
-                    container.push(i * 1000 + j);
+                    // Commented out container.push(i * 1000 + j);  // Do not use LockFreeStack
+					container.enqueue(i * 1000 + j);    
                     itemsProduced.fetch_add(1);
                 }
                 });
@@ -335,7 +401,8 @@ public:
 
                 int item;
                 while (itemsConsumed.load() < operations) {
-                    if (container.pop(item)) {
+                    // Commented out if (container.pop(item)) { Do not use LockFreeStack
+                    if (container.dequeue(item)) {
                         itemsConsumed.fetch_add(1);
                     }
                     else {
@@ -366,3 +433,75 @@ public:
         std::cout << std::endl;
     }
 };
+
+#ifdef BASIC_MAIN_TEST_001
+int main()
+{
+    constexpr int OPERATIONS = 100000;
+
+    LockFreeBenchmark::benchmarkContainer<LockFreeQueue<int>>(
+        "LockFreeQueue",
+        OPERATIONS,
+        2,
+        2);
+
+    LockFreeBenchmark::benchmarkContainer<MutexQueue<int>>(
+        "MutexQueue",
+        OPERATIONS,
+        2,
+        2);
+
+    return 0;
+}
+#elif defined(TEST_CONFIGURATIONS_002)
+int main()
+{
+	constexpr int OPERATIONS = 1'000'000;  // digit separator for readability from c++14
+
+    struct TestConfiguration
+    {
+        int producerThreads;
+        int consumerThreads;
+    };
+
+    // Fixed benchmark configurations
+    constexpr std::array<TestConfiguration, 6> testConfigurations
+    { {
+        {1, 1},
+        {2, 2},
+        {4, 4},
+        {8, 8},
+        {1, 4},
+        {4, 1}
+    } };
+
+    // Execute all benchmark configurations
+    for (const auto& test : testConfigurations)
+    {
+        std::cout << "\n=====================================================\n";
+        std::cout << "Configuration\n";
+        std::cout << "  Producer threads : " << test.producerThreads << '\n';
+        std::cout << "  Consumer threads : " << test.consumerThreads << '\n';
+        std::cout << "  Operations       : " << OPERATIONS << '\n';
+        std::cout << "=====================================================\n\n";
+
+        // Benchmark the lock-free queue
+        LockFreeBenchmark::benchmarkContainer<LockFreeQueue<int>>(
+            "LockFreeQueue",
+            OPERATIONS,
+            test.producerThreads,
+            test.consumerThreads);
+
+
+        // Benchmark the mutex-protected queue
+        LockFreeBenchmark::benchmarkContainer<MutexQueue<int>>(
+            "MutexQueue",
+            OPERATIONS,
+            test.producerThreads,
+            test.consumerThreads);
+    }
+
+    return 0;
+}
+#endif
+
