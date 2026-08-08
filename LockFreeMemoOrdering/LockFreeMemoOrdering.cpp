@@ -57,6 +57,9 @@ private:
     std::atomic<Node*> tail_;
     std::atomic<size_t> size_{ 0 };
 
+    // Number of failed compare-and-swap operations
+    std::atomic<size_t> failedCAS_{ 0 };
+
     // Memory reclamation using hazard pointers (simplified)
     static constexpr size_t MAX_HAZARD_POINTERS = 16;
     // thread_local: Each thread has its own independent instance of this variable.
@@ -139,6 +142,10 @@ public:
                         size_.fetch_add(1, std::memory_order_relaxed);
                         break;
                     }
+                    else
+                    {
+                        failedCAS_.fetch_add(1, std::memory_order_relaxed);
+                    }
                 }
                 else {
                     // Tail is lagging behind, try to advance it
@@ -197,6 +204,10 @@ public:
 
                         return true;
                     }
+                    else
+                    {
+                        failedCAS_.fetch_add(1, std::memory_order_relaxed);
+                    }
                 }
             }
         }
@@ -219,6 +230,10 @@ public:
     size_t size() const {
         return size_.load(std::memory_order_acquire);
     }
+
+    size_t failedCAS() const {
+        return failedCAS_.load(std::memory_order_acquire);
+    }   
 };
 
 // Just initializing the static members of the LockFreeQueue class template 
@@ -430,6 +445,9 @@ public:
         std::cout << "  Items produced: " << itemsProduced.load() << std::endl;
         std::cout << "  Items consumed: " << itemsConsumed.load() << std::endl;
         std::cout << "  Throughput: " << (operations * 1000.0 / duration.count()) << " ops/sec" << std::endl;
+        if constexpr (std::is_same_v<Container, LockFreeQueue<int>>) {
+            std::cout << "  Failed CAS operations: " << container.failedCAS() << std::endl;
+        }
         std::cout << std::endl;
     }
 };
