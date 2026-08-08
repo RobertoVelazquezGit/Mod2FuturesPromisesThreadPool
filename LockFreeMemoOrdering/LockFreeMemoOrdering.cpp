@@ -11,12 +11,13 @@ Experiment with different memory ordering constraints and their impact on correc
 
 //#define BASIC_MAIN_TEST_001
 //#define TEST_CONFIGURATIONS_002
-#define THROUGHPUT_TEST_003 
+//#define THROUGHPUT_TEST_003 
+#define CAS_MEMORY_TEST_004 
 
 #if (defined(BASIC_MAIN_TEST_001) + \
      defined(TEST_CONFIGURATIONS_002) + \
      defined(THROUGHPUT_TEST_003) + \
-     defined(SUSTAINED_LOAD_TEST_004)) != 1
+     defined(CAS_MEMORY_TEST_004 )) != 1
 #error "Exactly one test must be enabled."
 #endif
 
@@ -39,7 +40,11 @@ Experiment with different memory ordering constraints and their impact on correc
 // |                                |
 // v                                v
 // Dummy-- > Node1-- > Node2-- > Node3*/
-template<typename T>
+#ifdef CAS_MEMORY_TEST_004
+template<
+    typename T,
+    std::memory_order SuccessOrder = std::memory_order_release,
+    std::memory_order FailureOrder = std::memory_order_relaxed>
 class LockFreeQueue {
 private:
     struct Node {
@@ -64,7 +69,7 @@ private:
     static constexpr size_t MAX_HAZARD_POINTERS = 16;
     // thread_local: Each thread has its own independent instance of this variable.
     // std::array is like a vector of fixed size, each element is an atomic pointer to Node 
-	thread_local static std::array<std::atomic<Node*>, MAX_HAZARD_POINTERS> hazardPointers;  
+    thread_local static std::array<std::atomic<Node*>, MAX_HAZARD_POINTERS> hazardPointers;
     static std::atomic<size_t> hazardPointerIndex;
 
     Node* acquireHazardPointer(Node* node) {
@@ -93,7 +98,7 @@ private:
 
 public:
     LockFreeQueue() {
-		// the queue is initialized with a dummy node to simplify the enqueue and dequeue operations    
+        // the queue is initialized with a dummy node to simplify the enqueue and dequeue operations    
         Node* dummy = new Node();
         head_.store(dummy, std::memory_order_relaxed);
         tail_.store(dummy, std::memory_order_relaxed);
@@ -119,19 +124,239 @@ public:
 
             if (last == tail_.load(std::memory_order_acquire)) {
                 if (next == nullptr) {
-// Simplified prototype bool compare_exchange_weak(T& expected, T desired);
-// Internally :
-// if (counter == expected)
-// {
-//    counter = desired;
-//    return true;
-// }
-// else
-// {
-//    expected = counter;
-//    return false;
-// }
+                    // Simplified prototype bool compare_exchange_weak(T& expected, T desired);
+                    // Internally :
+                    // if (counter == expected)
+                    // {
+                    //    counter = desired;
+                    //    return true;
+                    // }
+                    // else
+                    // {
+                    //    expected = counter;
+                    //    return false;
+                    // }
                     // Try to link new node at the end of the list
+                    if (last->next.compare_exchange_weak(next, newNode, SuccessOrder, FailureOrder)) {
+                        // Successfully added new node, try to swing tail
+                        tail_.compare_exchange_weak(last, newNode,
+                            std::memory_order_release,
+                            std::memory_order_relaxed);
+                        size_.fetch_add(1, std::memory_order_relaxed);
+                        break;
+                    }
+                    else
+                    {
+                        failedCAS_.fetch_add(1, std::memory_order_relaxed);
+                    }
+                }
+                else {
+                    // Tail is lagging behind, try to advance it
+                    tail_.compare_exchange_weak(last, next,
+                        std::memory_order_release,
+                        std::memory_order_relaxed);
+                }
+            }
+        }
+    }
+
+    bool dequeue(T& result) {
+        while (true) {
+            Node* first = head_.load(std::memory_order_acquire);
+            Node* last = tail_.load(std::memory_order_acquire);
+            Node* next = first->next.load(std::memory_order_acquire);
+
+            if (first == head_.load(std::memory_order_acquire)) {
+                if (first == last) {
+                    if (next == nullptr) {
+                        // Queue is empty
+                        return false;
+                    }
+                    // Tail is lagging behind, advance it
+                    tail_.compare_exchange_weak(last, next,
+                        std::memory_order_release,
+                        std::memory_order_relaxed);
+                }
+                else {
+                    // Read data before potential dequeue
+                    if (next == nullptr) {
+                        continue;
+                    }
+
+                    T* data = next->data.load(std::memory_order_acquire);
+                    if (data == nullptr) {
+                        continue;
+                    }
+
+                    // Try to swing head to next node
+                    // next becomes the new dummy node, and first can be safely deleted if no hazard pointers point to it   
+                    if (head_.compare_exchange_weak(first, next, SuccessOrder, FailureOrder)) {
+                        result = *data;
+                        delete data;
+                        size_.fetch_sub(1, std::memory_order_relaxed);
+
+                        // Safe to reclaim first node (simplified - in production use proper hazard pointers)
+                        if (!isHazardous(first)) {
+                            // TODO:
+                            // Memory reclamation is intentionally disabled.
+                            // This avoids use-after-free while studying the lock-free algorithm.
+                            // Commented out delete first;
+                        }
+
+                        return true;
+                    }
+                    else
+                    {
+                        failedCAS_.fetch_add(1, std::memory_order_relaxed);
+                    }
+                }
+            }
+        }
+    }
+
+    //    head
+    //     |
+    //     v
+    //    +-------+     +------+     +------+
+    //    | Dummy | --> |  10  | --> | 20   |
+    //    +-------+     +------+     +------+
+    //                                ^
+    //                                |
+    //                               tail
+
+    bool empty() const {
+        return size_.load(std::memory_order_acquire) == 0;
+    }
+
+    size_t size() const {
+        return size_.load(std::memory_order_acquire);
+    }
+
+    size_t failedCAS() const {
+        return failedCAS_.load(std::memory_order_acquire);
+    }
+};
+
+// Just initializing the static members of the LockFreeQueue class template 
+
+// Thread-local storage initialization
+template<
+    typename T,
+    std::memory_order SuccessOrder,
+    std::memory_order FailureOrder>
+thread_local std::array<
+    std::atomic<typename LockFreeQueue<
+    T,
+    SuccessOrder,
+    FailureOrder>::Node*>,
+    LockFreeQueue<
+    T,
+    SuccessOrder,
+    FailureOrder>::MAX_HAZARD_POINTERS>
+    LockFreeQueue<T, SuccessOrder, FailureOrder>::hazardPointers{};
+
+template<
+    typename T,
+    std::memory_order SuccessOrder,
+    std::memory_order FailureOrder>
+std::atomic<size_t>
+LockFreeQueue<T, SuccessOrder, FailureOrder>::hazardPointerIndex{ 0 };
+
+#else  // CAS_MEMORY_TEST_004   
+
+template<typename T>
+class LockFreeQueue {
+private:
+    struct Node {
+        std::atomic<T*> data{ nullptr };
+        std::atomic<Node*> next{ nullptr };
+
+        Node() = default;
+
+        explicit Node(T item) {
+            data.store(new T(std::move(item)), std::memory_order_relaxed);
+        }
+    };
+
+    std::atomic<Node*> head_;
+    std::atomic<Node*> tail_;
+    std::atomic<size_t> size_{ 0 };
+
+    // Number of failed compare-and-swap operations
+    std::atomic<size_t> failedCAS_{ 0 };
+
+    // Memory reclamation using hazard pointers (simplified)
+    static constexpr size_t MAX_HAZARD_POINTERS = 16;
+    // thread_local: Each thread has its own independent instance of this variable.
+    // std::array is like a vector of fixed size, each element is an atomic pointer to Node 
+    thread_local static std::array<std::atomic<Node*>, MAX_HAZARD_POINTERS> hazardPointers;
+    static std::atomic<size_t> hazardPointerIndex;
+
+    Node* acquireHazardPointer(Node* node) {
+        size_t index = hazardPointerIndex.fetch_add(1, std::memory_order_relaxed) % MAX_HAZARD_POINTERS;
+        hazardPointers[index].store(node, std::memory_order_release);
+        return node;
+    }
+
+    void releaseHazardPointer(Node* node) {
+        for (auto& hp : hazardPointers) {
+            if (hp.load(std::memory_order_acquire) == node) {
+                hp.store(nullptr, std::memory_order_release);
+                break;
+            }
+        }
+    }
+
+    bool isHazardous(Node* node) {
+        for (const auto& hp : hazardPointers) {
+            if (hp.load(std::memory_order_acquire) == node) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+public:
+    LockFreeQueue() {
+        // the queue is initialized with a dummy node to simplify the enqueue and dequeue operations    
+        Node* dummy = new Node();
+        head_.store(dummy, std::memory_order_relaxed);
+        tail_.store(dummy, std::memory_order_relaxed);
+    }
+
+    ~LockFreeQueue() {
+        while (Node* node = head_.load(std::memory_order_relaxed)) {
+            head_.store(node->next.load(std::memory_order_relaxed), std::memory_order_relaxed);
+            delete node;
+        }
+    }
+
+    void enqueue(T item) {
+        // Moves the item (T), not the Node.
+        // Node(Node&&) would only be called by:
+        // Node n1("Hello");
+        // Node n2(std::move(n1));
+        Node* newNode = new Node(std::move(item));
+
+        while (true) {
+            Node* last = tail_.load(std::memory_order_acquire);
+            Node* next = last->next.load(std::memory_order_acquire);
+
+            if (last == tail_.load(std::memory_order_acquire)) {
+                if (next == nullptr) {
+                    // Simplified prototype bool compare_exchange_weak(T& expected, T desired);
+                    // Internally :
+                    // if (counter == expected)
+                    // {
+                    //    counter = desired;
+                    //    return true;
+                    // }
+                    // else
+                    // {
+                    //    expected = counter;
+                    //    return false;
+                    // }
+                                        // Try to link new node at the end of the list
                     if (last->next.compare_exchange_weak(next, newNode,
                         std::memory_order_release /*success_order*/,
                         std::memory_order_relaxed /*failure_order*/)) {
@@ -186,11 +411,11 @@ public:
                     }
 
                     // Try to swing head to next node
-					// next becomes the new dummy node, and first can be safely deleted if no hazard pointers point to it   
+                    // next becomes the new dummy node, and first can be safely deleted if no hazard pointers point to it   
                     if (head_.compare_exchange_weak(first, next,
                         std::memory_order_release,
                         std::memory_order_relaxed)) {
-                        result = *data;  
+                        result = *data;
                         delete data;
                         size_.fetch_sub(1, std::memory_order_relaxed);
 
@@ -213,15 +438,15 @@ public:
         }
     }
 
-//    head
-//     |
-//     v
-//    +-------+     +------+     +------+
-//    | Dummy | --> |  10  | --> | 20   |
-//    +-------+     +------+     +------+
-//                                ^
-//                                |
-//                               tail
+    //    head
+    //     |
+    //     v
+    //    +-------+     +------+     +------+
+    //    | Dummy | --> |  10  | --> | 20   |
+    //    +-------+     +------+     +------+
+    //                                ^
+    //                                |
+    //                               tail
 
     bool empty() const {
         return size_.load(std::memory_order_acquire) == 0;
@@ -233,7 +458,7 @@ public:
 
     size_t failedCAS() const {
         return failedCAS_.load(std::memory_order_acquire);
-    }   
+    }
 };
 
 // Just initializing the static members of the LockFreeQueue class template 
@@ -245,6 +470,7 @@ LockFreeQueue<T>::hazardPointers{};
 
 template<typename T>
 std::atomic<size_t> LockFreeQueue<T>::hazardPointerIndex{ 0 };
+#endif  // CAS_MEMORY_TEST_004  
 
 #define DISABLE_LOCKFREESTACK_IMPLEMENTATION  // Disable LockFreeStack implementation for comparison    
 // Treiber Stack algorithm for lock-free stack implementation   
@@ -386,7 +612,7 @@ public:
 };
 // Performance benchmarking utility
 #define ENABLE_COMPLETE_LOCKFREE_QUEUE_BENCHMARK    
-#if defined(ENABLE_COMPLETE_LOCKFREE_QUEUE_BENCHMARK) && !defined(THROUGHPUT_TEST_003)
+#if defined(ENABLE_COMPLETE_LOCKFREE_QUEUE_BENCHMARK) && (!defined(THROUGHPUT_TEST_003) && !defined(CAS_MEMORY_TEST_004))   
 #error "ENABLE_COMPLETE_LOCKFREE_QUEUE_BENCHMARK requires THROUGHPUT_TEST_003 to be defined"
 #endif
 
@@ -777,6 +1003,152 @@ int main()
     }
 
     std::cout << "\n";
+
+    return 0;
+}
+#elif defined(CAS_MEMORY_TEST_004)  
+// ---------------------------------------------------------
+// Queue configurations
+// ---------------------------------------------------------
+
+// Default configuration:
+// Success = release
+// Failure = relaxed
+using QueueReleaseRelaxed =
+LockFreeQueue<
+    int,
+    std::memory_order_release,
+    std::memory_order_relaxed>;
+
+
+// Strongest memory ordering:
+// Success = seq_cst
+// Failure = seq_cst
+using QueueSeqCst =
+LockFreeQueue<
+    int,
+    std::memory_order_seq_cst,
+    std::memory_order_seq_cst>;
+
+// ---------------------------------------------------------
+// Benchmark configuration
+// ---------------------------------------------------------
+
+struct TestConfiguration
+{
+    int operations;
+    int producerThreads;
+    int consumerThreads;
+};
+
+int main()
+{
+    TestConfiguration config
+    {
+        1'000'000,   // Operations
+        4,            // Producer threads
+        4             // Consumer threads
+    };
+
+
+    std::cout
+        << "=====================================================\n"
+        << "Memory Ordering Benchmark\n"
+        << "=====================================================\n";
+
+    std::cout
+        << "Configuration\n"
+        << "  Producer threads : "
+        << config.producerThreads << '\n'
+
+        << "  Consumer threads : "
+        << config.consumerThreads << '\n'
+
+        << "  Operations       : "
+        << config.operations << '\n';
+
+    std::cout
+        << "=====================================================\n\n";
+
+
+    // -----------------------------------------------------
+    // 1. Lock-free queue: release / relaxed
+    // -----------------------------------------------------
+
+    auto releaseResult =
+        LockFreeBenchmark::benchmarkContainer<
+        QueueReleaseRelaxed>(
+            "LockFreeQueue - Release/Relaxed",
+            config.operations,
+            config.producerThreads,
+            config.consumerThreads);
+
+
+    // -----------------------------------------------------
+    // 2. Lock-free queue: seq_cst / seq_cst
+    // -----------------------------------------------------
+
+    auto seqCstResult =
+        LockFreeBenchmark::benchmarkContainer<
+        QueueSeqCst>(
+            "LockFreeQueue - SeqCst/SeqCst",
+            config.operations,
+            config.producerThreads,
+            config.consumerThreads);
+
+
+    // -----------------------------------------------------
+    // 3. Mutex-protected queue
+    // -----------------------------------------------------
+
+    auto mutexResult =
+        LockFreeBenchmark::benchmarkContainer<
+        MutexQueue<int>>(
+            "MutexQueue",
+            config.operations,
+            config.producerThreads,
+            config.consumerThreads);
+
+
+    // -----------------------------------------------------
+    // Summary
+    // -----------------------------------------------------
+
+    std::cout
+        << "=====================================================\n"
+        << "Summary\n"
+        << "=====================================================\n";
+
+    std::cout
+        << "Release / Relaxed : "
+        << releaseResult.throughput
+        << " ops/sec\n";
+
+    std::cout
+        << "SeqCst / SeqCst   : "
+        << seqCstResult.throughput
+        << " ops/sec\n";
+
+    std::cout
+        << "MutexQueue        : "
+        << mutexResult.throughput
+        << " ops/sec\n";
+
+
+    std::cout
+        << "\nFailed CAS\n";
+
+    std::cout
+        << "Release / Relaxed : "
+        << releaseResult.failedCAS << '\n';
+
+    std::cout
+        << "SeqCst / SeqCst   : "
+        << seqCstResult.failedCAS << '\n';
+
+    std::cout
+        << "MutexQueue        : N/A\n";
+
 
     return 0;
 }
