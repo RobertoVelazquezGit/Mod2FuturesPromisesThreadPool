@@ -10,7 +10,8 @@ Experiment with different memory ordering constraints and their impact on correc
 */
 
 //#define BASIC_MAIN_TEST_001
-#define TEST_CONFIGURATIONS_002
+//#define TEST_CONFIGURATIONS_002
+#define BURST_LOAD_TEST_003 
 
 #if (defined(BASIC_MAIN_TEST_001) + \
      defined(TEST_CONFIGURATIONS_002) + \
@@ -31,8 +32,7 @@ Experiment with different memory ordering constraints and their impact on correc
 #include <queue>
 #include <mutex>
 #include <array>
-#include <array>
-#include <iostream>
+
 
 // Michael & Scott Lock-Free Queue algorithm    
 // head                             tail
@@ -246,8 +246,12 @@ LockFreeQueue<T>::hazardPointers{};
 template<typename T>
 std::atomic<size_t> LockFreeQueue<T>::hazardPointerIndex{ 0 };
 
+#define DISABLE_LOCKFREESTACK_IMPLEMENTATION  // Disable LockFreeStack implementation for comparison    
 // Treiber Stack algorithm for lock-free stack implementation   
 // Lock-free stack for comparison
+#ifdef DISABLE_LOCKFREESTACK_IMPLEMENTATION
+#pragma message("LockFreeStack implementation is disabled")
+#else DISABLE_LOCKFREESTACK_IMPLEMENTATION
 template<typename T>
 class LockFreeStack {
 private:
@@ -334,6 +338,7 @@ public:
         return size_.load(std::memory_order_acquire);
     }
 };
+#endif // !DISABLE_LOCKFREESTACK_IMPLEMENTATION
 
 template<typename T>
 class MutexQueue
@@ -379,8 +384,178 @@ public:
         return queue_.size();
     }
 };
-
 // Performance benchmarking utility
+#define ENABLE_COMPLETE_LOCKFREE_QUEUE_BENCHMARK    
+#if defined(ENABLE_COMPLETE_LOCKFREE_QUEUE_BENCHMARK) && !defined(BURST_LOAD_TEST_003)
+#error "ENABLE_COMPLETE_LOCKFREE_QUEUE_BENCHMARK requires BURST_LOAD_TEST_003 to be defined"
+#endif
+
+#ifdef ENABLE_COMPLETE_LOCKFREE_QUEUE_BENCHMARK    
+class LockFreeBenchmark
+{
+public:
+
+    struct BenchmarkResult
+    {
+        long long durationMs;
+        double throughput;
+        size_t failedCAS;
+    };
+
+private:
+
+    // Returns the number of failed CAS operations for containers
+    // that provide failedCAS().
+    template<typename Container>
+    static auto getFailedCAS(const Container& container)
+        -> decltype(container.failedCAS())
+    {
+        return container.failedCAS();
+    }
+
+    // Fallback for containers that do not provide failedCAS().
+    static size_t getFailedCAS(...)
+    {
+        return 0;
+    }
+
+public:
+
+    template<typename Container>
+    static BenchmarkResult benchmarkContainer(
+        const std::string& containerName,
+        int operations,
+        int producerThreads,
+        int consumerThreads)
+    {
+        Container container;
+
+        std::atomic<bool> start{ false };
+        std::atomic<int> itemsProduced{ 0 };
+        std::atomic<int> itemsConsumed{ 0 };
+
+        auto startTime =
+            std::chrono::high_resolution_clock::now();
+
+        // Producer threads
+        std::vector<std::thread> producers;
+
+        for (int i = 0; i < producerThreads; ++i)
+        {
+            producers.emplace_back([&, i]()
+                {
+                    while (!start.load())
+                    {
+                        // Spin wait
+                    }
+
+                    int itemsPerProducer =
+                        operations / producerThreads;
+
+                    for (int j = 0; j < itemsPerProducer; ++j)
+                    {
+                        container.enqueue(i * 1000 + j);
+                        itemsProduced.fetch_add(1);
+                    }
+                });
+        }
+
+        // Consumer threads
+        std::vector<std::thread> consumers;
+
+        for (int i = 0; i < consumerThreads; ++i)
+        {
+            consumers.emplace_back([&]()
+                {
+                    while (!start.load())
+                    {
+                        // Spin wait
+                    }
+
+                    int item;
+
+                    while (itemsConsumed.load() < operations)
+                    {
+                        if (container.dequeue(item))
+                        {
+                            itemsConsumed.fetch_add(1);
+                        }
+                        else
+                        {
+                            std::this_thread::yield();
+                        }
+                    }
+                });
+        }
+
+        // Start benchmark
+        start.store(true);
+
+        // Wait for all producer threads
+        for (auto& thread : producers)
+        {
+            thread.join();
+        }
+
+        // Wait for all consumer threads
+        for (auto& thread : consumers)
+        {
+            thread.join();
+        }
+
+        auto endTime =
+            std::chrono::high_resolution_clock::now();
+
+        auto duration =
+            std::chrono::duration_cast<std::chrono::milliseconds>(
+                endTime - startTime);
+
+        double throughput =
+            operations * 1000.0 / duration.count();
+
+        size_t failedCAS =
+            getFailedCAS(container);
+
+        std::cout << containerName
+            << " Benchmark Results:\n";
+
+        std::cout << "  Operations       : "
+            << operations << '\n';
+
+        std::cout << "  Producer threads: "
+            << producerThreads << '\n';
+
+        std::cout << "  Consumer threads: "
+            << consumerThreads << '\n';
+
+        std::cout << "  Duration         : "
+            << duration.count() << " ms\n";
+
+        std::cout << "  Items produced   : "
+            << itemsProduced.load() << '\n';
+
+        std::cout << "  Items consumed   : "
+            << itemsConsumed.load() << '\n';
+
+        std::cout << "  Throughput       : "
+            << throughput << " ops/sec\n";
+
+        if (failedCAS > 0)
+        {
+            std::cout << "  Failed CAS       : "
+                << failedCAS << '\n';
+        }
+
+        std::cout << '\n';
+
+        return BenchmarkResult{
+            duration.count(),
+            throughput,
+            failedCAS
+        };
+    }
+};
+#else
 class LockFreeBenchmark {
 public:
     template<typename Container>
@@ -402,7 +577,7 @@ public:
                 int itemsPerProducer = operations / producerThreads;
                 for (int j = 0; j < itemsPerProducer; ++j) {
                     // Commented out container.push(i * 1000 + j);  // Do not use LockFreeStack
-					container.enqueue(i * 1000 + j);    
+                    container.enqueue(i * 1000 + j);
                     itemsProduced.fetch_add(1);
                 }
                 });
@@ -451,6 +626,10 @@ public:
         std::cout << std::endl;
     }
 };
+#endif
+
+
+
 
 #ifdef BASIC_MAIN_TEST_001
 int main()
@@ -519,6 +698,11 @@ int main()
             test.consumerThreads);
     }
 
+    return 0;
+}
+#elif defined(BURST_LOAD_TEST_003)  
+int main()
+{
     return 0;
 }
 #endif
