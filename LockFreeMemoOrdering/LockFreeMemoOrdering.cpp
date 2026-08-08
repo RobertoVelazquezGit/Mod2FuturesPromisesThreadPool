@@ -11,11 +11,11 @@ Experiment with different memory ordering constraints and their impact on correc
 
 //#define BASIC_MAIN_TEST_001
 //#define TEST_CONFIGURATIONS_002
-#define BURST_LOAD_TEST_003 
+#define THROUGHPUT_TEST_003 
 
 #if (defined(BASIC_MAIN_TEST_001) + \
      defined(TEST_CONFIGURATIONS_002) + \
-     defined(BURST_LOAD_TEST_003) + \
+     defined(THROUGHPUT_TEST_003) + \
      defined(SUSTAINED_LOAD_TEST_004)) != 1
 #error "Exactly one test must be enabled."
 #endif
@@ -386,8 +386,8 @@ public:
 };
 // Performance benchmarking utility
 #define ENABLE_COMPLETE_LOCKFREE_QUEUE_BENCHMARK    
-#if defined(ENABLE_COMPLETE_LOCKFREE_QUEUE_BENCHMARK) && !defined(BURST_LOAD_TEST_003)
-#error "ENABLE_COMPLETE_LOCKFREE_QUEUE_BENCHMARK requires BURST_LOAD_TEST_003 to be defined"
+#if defined(ENABLE_COMPLETE_LOCKFREE_QUEUE_BENCHMARK) && !defined(THROUGHPUT_TEST_003)
+#error "ENABLE_COMPLETE_LOCKFREE_QUEUE_BENCHMARK requires THROUGHPUT_TEST_003 to be defined"
 #endif
 
 #ifdef ENABLE_COMPLETE_LOCKFREE_QUEUE_BENCHMARK    
@@ -404,22 +404,26 @@ public:
 
 private:
 
-    // Returns the number of failed CAS operations for containers
-    // that provide failedCAS().
+// SFINAE (Substitution Failure Is Not An Error):
+// If Container provides failedCAS(), the first overload is valid and preferred
+// because the second parameter is an exact int match.
+// If failedCAS() does not exist, substitution fails and this overload is discarded;
+// the fallback overload using "..." is then selected.
+// The int parameter provides an exact match and gives this overload priority.
+// The "..." is the C-style variadic function parameter, providing a generic fallback match.
+
     template<typename Container>
-    static auto getFailedCAS(const Container& container)
+    static auto getFailedCAS(const Container& container, int)
         -> decltype(container.failedCAS())
     {
         return container.failedCAS();
     }
 
-    // Fallback for containers that do not provide failedCAS().
-    static size_t getFailedCAS(...)
+    template<typename Container>
+    static size_t getFailedCAS(const Container&, ...)
     {
         return 0;
     }
-
-    // ToDo
 
 public:
 
@@ -516,7 +520,7 @@ public:
             operations * 1000.0 / duration.count();
 
         size_t failedCAS =
-            getFailedCAS(container);
+            getFailedCAS(container, 0); 
 
         std::cout << containerName
             << " Benchmark Results:\n";
@@ -702,9 +706,78 @@ int main()
 
     return 0;
 }
-#elif defined(BURST_LOAD_TEST_003)  
+#elif defined(THROUGHPUT_TEST_003)  
 int main()
 {
+    constexpr int OPERATIONS = 1'000'000;
+    constexpr int PRODUCER_THREADS = 4;
+    constexpr int CONSUMER_THREADS = 4;
+
+    std::cout << "=====================================================\n";
+    std::cout << "Lock-Free vs Mutex Queue Benchmark\n";
+    std::cout << "=====================================================\n\n";
+
+    std::cout << "Configuration\n";
+    std::cout << "  Producer threads : " << PRODUCER_THREADS << '\n';
+    std::cout << "  Consumer threads : " << CONSUMER_THREADS << '\n';
+    std::cout << "  Operations       : " << OPERATIONS << '\n';
+    std::cout << "=====================================================\n\n";
+
+
+    // -------------------------------------------------
+    // Lock-free queue benchmark
+    // -------------------------------------------------
+
+    auto lockFreeResult =
+        LockFreeBenchmark::benchmarkContainer<LockFreeQueue<int>>(
+            "LockFreeQueue",
+            OPERATIONS,
+            PRODUCER_THREADS,
+            CONSUMER_THREADS);
+
+
+    // -------------------------------------------------
+    // Mutex-protected queue benchmark
+    // -------------------------------------------------
+
+    auto mutexResult =
+        LockFreeBenchmark::benchmarkContainer<MutexQueue<int>>(
+            "MutexQueue",
+            OPERATIONS,
+            PRODUCER_THREADS,
+            CONSUMER_THREADS);
+
+
+    // -------------------------------------------------
+    // Compare results
+    // -------------------------------------------------
+
+    std::cout << "=====================================================\n";
+    std::cout << "Comparison\n";
+    std::cout << "=====================================================\n";
+
+    std::cout << "LockFreeQueue throughput : "
+        << lockFreeResult.throughput
+        << " ops/sec\n";
+
+    std::cout << "MutexQueue throughput    : "
+        << mutexResult.throughput
+        << " ops/sec\n";
+
+
+    if (mutexResult.throughput > 0.0)
+    {
+        double speedup =
+            lockFreeResult.throughput /
+            mutexResult.throughput;
+
+        std::cout << "Speedup                  : "
+            << speedup
+            << "x\n";
+    }
+
+    std::cout << "\n";
+
     return 0;
 }
 #endif
