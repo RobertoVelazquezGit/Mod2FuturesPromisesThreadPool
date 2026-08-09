@@ -18,9 +18,6 @@
     <ClCompile Include="IntegratedConcurrencyArchitecture.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="DynamicThreadPool_b.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="DynamicThreadPool_.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>

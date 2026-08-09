@@ -125,7 +125,6 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="DynamicThreadPool_.cpp" />
-    <ClCompile Include="DynamicThreadPool_b.cpp" />
     <ClCompile Include="IntegratedConcurrencyArchitecture.cpp" />
   </ItemGroup>
   <ItemGroup>
