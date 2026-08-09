@@ -26,5 +26,8 @@
     <ClInclude Include="DynamicThreadPool_.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="AsynTaskManager.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

@@ -128,6 +128,7 @@
     <ClCompile Include="IntegratedConcurrencyArchitecture.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="AsynTaskManager.h" />
     <ClInclude Include="DynamicThreadPool_.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
