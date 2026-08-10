@@ -17,6 +17,7 @@ Monitor latency, throughput, and resource utilization across all system componen
 #include <random>
 #include "DynamicThreadPool_.h" 
 #include "AsyncTaskManager.h"
+#include "LockFreeQueue.h"  
 
 // Market data types
 struct MarketTick {
@@ -24,6 +25,8 @@ struct MarketTick {
     double price;
     int volume;
     std::chrono::steady_clock::time_point timestamp;
+
+    MarketTick() = default;
 
     MarketTick(const std::string& sym, double p, int v)
         : symbol(sym), price(p), volume(v), timestamp(std::chrono::steady_clock::now()) {
@@ -270,7 +273,7 @@ public:
         std::cout << "\n=== Market Processor Metrics ===" << std::endl;
         std::cout << "Ticks processed: " << metrics.ticksProcessed << std::endl;
         std::cout << "Signals generated: " << metrics.signalsGenerated << std::endl;
-        std::cout << "Average latency: " << metrics.averageLatency << " μs" << std::endl;
+        std::cout << "Average latency: " << metrics.averageLatency << " micros" << std::endl;
         std::cout << "Queue size: " << metrics.queueSize << std::endl;
         std::cout << "Symbols tracked: " << metrics.symbolsTracked << std::endl;
 
@@ -290,7 +293,8 @@ int main() {
     std::thread dataGenerator([&]() {
         std::uniform_real_distribution<> priceDist(100.0, 200.0);
         std::uniform_int_distribution<> volumeDist(100, 10000);
-        std::uniform_int_distribution<> symbolDist(0, symbols.size() - 1);
+        //std::uniform_int_distribution<> symbolDist(0, symbols.size() - 1);
+        std::uniform_int_distribution<std::size_t> symbolDist(0, symbols.size() - 1);
 
         for (int i = 0; i < 10000; ++i) {
             std::string symbol = symbols[symbolDist(gen)];

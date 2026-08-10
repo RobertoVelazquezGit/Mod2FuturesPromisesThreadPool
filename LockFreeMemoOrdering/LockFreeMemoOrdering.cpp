@@ -11,8 +11,8 @@ Experiment with different memory ordering constraints and their impact on correc
 
 //#define BASIC_MAIN_TEST_001
 //#define TEST_CONFIGURATIONS_002
-//#define THROUGHPUT_TEST_003 
-#define CAS_MEMORY_TEST_004 
+#define THROUGHPUT_TEST_003 
+//#define CAS_MEMORY_TEST_004 
 
 #if (defined(BASIC_MAIN_TEST_001) + \
      defined(TEST_CONFIGURATIONS_002) + \

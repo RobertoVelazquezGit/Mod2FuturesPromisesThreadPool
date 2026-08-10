@@ -130,6 +130,7 @@
   <ItemGroup>
     <ClInclude Include="AsyncTaskManager.h" />
     <ClInclude Include="DynamicThreadPool_.h" />
+    <ClInclude Include="LockFreeQueue.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
