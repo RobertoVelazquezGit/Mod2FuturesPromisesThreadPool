@@ -10,7 +10,6 @@
 #include <thread>
 #include <vector>
 
-
 enum class TaskPriority
 {
     LOW = 1,
@@ -19,7 +18,6 @@ enum class TaskPriority
     CRITICAL = 4
 };
 
-
 struct Task
 {
     std::function<void()> function;
@@ -27,35 +25,24 @@ struct Task
     std::chrono::steady_clock::time_point submitTime;
     std::string taskId;
 
-    Task(std::function<void()> func,
-        TaskPriority prio,
-        const std::string& id = "");
+    Task(std::function<void()> func, TaskPriority prio, const std::string& id = "");
 
     Task(const Task&) = default;
     Task& operator=(const Task&) = default;
-
     Task(Task&&) = default;
     Task& operator=(Task&&) = default;
 };
-
 
 struct TaskComparator
 {
     bool operator()(const Task& a, const Task& b) const;
 };
 
-
 class DynamicThreadPool
 {
 private:
-
     std::vector<std::thread> workers_;
-
-    std::priority_queue<
-        Task,
-        std::vector<Task>,
-        TaskComparator
-    > taskQueue_;
+    std::priority_queue<Task, std::vector<Task>, TaskComparator> taskQueue_;
 
     mutable std::mutex queueMutex_;
     std::condition_variable condition_;
@@ -73,18 +60,12 @@ private:
     std::atomic<double> averageTaskTime_{ 0.0 };
     std::atomic<size_t> queueHighWaterMark_{ 0 };
 
-
     void workerThread();
-
     void updatePerformanceMetrics(double taskDuration);
-
     void scaleThreadPool();
-
     void addWorkerThread();
 
-
 public:
-
     struct PoolStats
     {
         size_t currentThreads;
@@ -95,30 +76,17 @@ public:
         size_t queueHighWaterMark;
     };
 
-
-    DynamicThreadPool(
-        size_t minThreads = 2,
-        size_t maxThreads =
-        std::thread::hardware_concurrency() * 2
-    );
-
+    DynamicThreadPool(size_t minThreads = 2,
+                      size_t maxThreads = std::thread::hardware_concurrency() * 2);
     ~DynamicThreadPool();
 
-
     template<typename Func>
-    void submit(
-        Func&& func,
-        TaskPriority priority = TaskPriority::NORMAL,
-        const std::string& taskId = "")
+    void submit(Func&& func, TaskPriority priority = TaskPriority::NORMAL,
+                const std::string& taskId = "")
     {
         {
             std::lock_guard<std::mutex> lock(queueMutex_);
-
-            taskQueue_.emplace(
-                std::forward<Func>(func),
-                priority,
-                taskId
-            );
+            taskQueue_.emplace(std::forward<Func>(func), priority, taskId);
         }
 
         condition_.notify_one();
@@ -127,13 +95,8 @@ public:
         scaleThreadPool();
     }
 
-
     size_t getQueueSize() const;
-
     PoolStats getStats() const;
-
     void shutdown();
-
     void printStats() const;
 };
-
