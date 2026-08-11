@@ -80,8 +80,6 @@ public:
         dataQueue_.enqueue(MarketData{ signal });
     }
 
-    // ToDo
-
 private:
     void startDataProcessor() {
         // High-priority data ingestion processor

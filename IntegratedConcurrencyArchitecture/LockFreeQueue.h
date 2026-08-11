@@ -240,29 +240,11 @@ public:
     {
         while (true)
         {
-            Node* first =
-                head_.load(
-                    std::memory_order_acquire
-                );
+            Node* first = head_.load(std::memory_order_acquire);
+            Node* last = tail_.load(std::memory_order_acquire);
+            Node* next = first->next.load(std::memory_order_acquire);
 
-
-            Node* last =
-                tail_.load(
-                    std::memory_order_acquire
-                );
-
-
-            Node* next =
-                first->next.load(
-                    std::memory_order_acquire
-                );
-
-
-            if (
-                first ==
-                head_.load(
-                    std::memory_order_acquire
-                ))
+            if (first == head_.load(std::memory_order_acquire))
             {
                 if (first == last)
                 {
@@ -273,30 +255,20 @@ public:
                     }
 
 
-                    // Tail is lagging behind.
-                    // Advance it.
-
-                    tail_.compare_exchange_weak(
-                        last,
-                        next,
-                        std::memory_order_release,
-                        std::memory_order_relaxed
-                    );
+                    // Tail is lagging behind. Advance it.
+                    tail_.compare_exchange_weak(last, next, std::memory_order_release,
+                                                std::memory_order_relaxed);
                 }
                 else
                 {
                     // Read data before potential dequeue.
-
                     if (next == nullptr)
                     {
                         continue;
                     }
 
 
-                    T* data =
-                        next->data.load(
-                            std::memory_order_acquire
-                        );
+                    T* data = next->data.load(std::memory_order_acquire);
 
 
                     if (data == nullptr)
@@ -305,32 +277,15 @@ public:
                     }
 
 
-                    // Try to swing head to next node.
-                    //
-                    // next becomes the new dummy node.
-
-                    if (
-                        head_.compare_exchange_weak(
-                            first,
-                            next,
-                            std::memory_order_release,
-                            std::memory_order_relaxed
-                        ))
+                    // Try to swing head to next node; next becomes the new dummy node.
+                    if (head_.compare_exchange_weak(first, next, std::memory_order_release,
+                                                    std::memory_order_relaxed))
                     {
                         result = *data;
-
-
                         delete data;
+                        size_.fetch_sub(1, std::memory_order_relaxed);
 
-
-                        size_.fetch_sub(
-                            1,
-                            std::memory_order_relaxed
-                        );
-
-
-                        // Safe reclamation is intentionally
-                        // disabled while studying the algorithm.
+                        // Safe reclamation is intentionally disabled while studying the algorithm.
 
                         if (!isHazardous(first))
                         {
@@ -343,10 +298,7 @@ public:
                     }
                     else
                     {
-                        failedCAS_.fetch_add(
-                            1,
-                            std::memory_order_relaxed
-                        );
+                        failedCAS_.fetch_add(1, std::memory_order_relaxed);
                     }
                 }
             }
