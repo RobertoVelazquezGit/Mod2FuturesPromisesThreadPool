@@ -209,6 +209,8 @@ private:
             << " (confidence: " << signal.confidence << ")" << std::endl;
     }
 
+    // ToDo
+
     void generateTradingSignals() {
         while (true) {
             // Periodic signal generation based on market conditions
