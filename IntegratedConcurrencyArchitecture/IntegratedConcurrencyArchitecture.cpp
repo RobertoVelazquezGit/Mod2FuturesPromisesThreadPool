@@ -165,6 +165,7 @@ private:
 
             if (priceChange > PRICE_CHANGE_THRESHOLD) {
                 // Submit async analysis task
+				// Notice submitTask future is not stored, as we are only interested in the side effect of generating a signal 
                 signalProcessor_.submitTask([this, tick, priceChange]() {
                     return analyzeSignificantMove(tick, priceChange);
                     });
