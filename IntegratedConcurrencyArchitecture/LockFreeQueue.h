@@ -5,104 +5,63 @@
 #include <cstddef>
 #include <utility>
 
-
 template<typename T>
 class LockFreeQueue
 {
 private:
-
     struct Node
     {
         std::atomic<T*> data{ nullptr };
         std::atomic<Node*> next{ nullptr };
 
-
         Node() = default;
-
 
         explicit Node(T item)
         {
-            data.store(
-                new T(std::move(item)),
-                std::memory_order_relaxed
-            );
+            data.store(new T(std::move(item)), std::memory_order_relaxed);
         }
     };
 
-
     std::atomic<Node*> head_;
     std::atomic<Node*> tail_;
-
     std::atomic<size_t> size_{ 0 };
 
-
-    // Number of failed compare-and-swap operations
+    // Number of failed compare-and-swap operations.
     std::atomic<size_t> failedCAS_{ 0 };
 
-
-    // Memory reclamation using hazard pointers
-    // (simplified)
+    // Memory reclamation using hazard pointers (simplified).
     static constexpr size_t MAX_HAZARD_POINTERS = 16;
 
+    // Each thread has its own independent instance of this array.
+    thread_local static std::array<std::atomic<Node*>, MAX_HAZARD_POINTERS> hazardPointers;
 
-    // Each thread has its own independent instance
-    // of this array.
-    thread_local static
-        std::array<
-        std::atomic<Node*>,
-        MAX_HAZARD_POINTERS
-        > hazardPointers;
-
-
-    // Global index used to assign hazard pointer slots
+    // Global index used to assign hazard pointer slots.
     static std::atomic<size_t> hazardPointerIndex;
-
 
     Node* acquireHazardPointer(Node* node)
     {
-        size_t index =
-            hazardPointerIndex.fetch_add(
-                1,
-                std::memory_order_relaxed
-            ) % MAX_HAZARD_POINTERS;
-
-
-        hazardPointers[index].store(
-            node,
-            std::memory_order_release
-        );
-
-
+        size_t index = hazardPointerIndex.fetch_add(1, std::memory_order_relaxed) % MAX_HAZARD_POINTERS;
+        hazardPointers[index].store(node, std::memory_order_release);
         return node;
     }
-
 
     void releaseHazardPointer(Node* node)
     {
         for (auto& hp : hazardPointers)
         {
-            if (hp.load(
-                std::memory_order_acquire)
-                == node)
+            if (hp.load(std::memory_order_acquire) == node)
             {
-                hp.store(
-                    nullptr,
-                    std::memory_order_release
-                );
-
+                hp.store(nullptr, std::memory_order_release);
                 break;
             }
         }
     }
 
-
     bool isHazardous(Node* node)
     {
         for (const auto& hp : hazardPointers)
         {
-            if (hp.load(
-                std::memory_order_acquire)
-                == node)
+            if (hp.load(std::memory_order_acquire) == node)
             {
                 return true;
             }
@@ -111,130 +70,62 @@ private:
         return false;
     }
 
-
 public:
-
     LockFreeQueue()
     {
-        // The queue is initialized with a dummy node
-        // to simplify enqueue and dequeue operations.
-
+        // The queue is initialized with a dummy node to simplify enqueue and dequeue operations.
         Node* dummy = new Node();
-
-
-        head_.store(
-            dummy,
-            std::memory_order_relaxed
-        );
-
-        tail_.store(
-            dummy,
-            std::memory_order_relaxed
-        );
+        head_.store(dummy, std::memory_order_relaxed);
+        tail_.store(dummy, std::memory_order_relaxed);
     }
-
 
     ~LockFreeQueue()
     {
-        while (
-            Node* node =
-            head_.load(std::memory_order_relaxed))
+        while (Node* node = head_.load(std::memory_order_relaxed))
         {
-            head_.store(
-                node->next.load(
-                    std::memory_order_relaxed
-                ),
-                std::memory_order_relaxed
-            );
-
+            head_.store(node->next.load(std::memory_order_relaxed), std::memory_order_relaxed);
             delete node;
         }
     }
 
-
     void enqueue(T item)
     {
         // Moves the item (T), not the Node.
-        Node* newNode =
-            new Node(std::move(item));
-
+        Node* newNode = new Node(std::move(item));
 
         while (true)
         {
-            Node* last =
-                tail_.load(
-                    std::memory_order_acquire
-                );
+            Node* last = tail_.load(std::memory_order_acquire);
+            Node* next = last->next.load(std::memory_order_acquire);
 
-
-            Node* next =
-                last->next.load(
-                    std::memory_order_acquire
-                );
-
-
-            if (
-                last ==
-                tail_.load(
-                    std::memory_order_acquire
-                ))
+            if (last == tail_.load(std::memory_order_acquire))
             {
                 if (next == nullptr)
                 {
-                    // Try to link new node at the end
-                    // of the list.
-
-                    if (
-                        last->next.compare_exchange_weak(
-                            next,
-                            newNode,
-                            std::memory_order_release,
-                            std::memory_order_relaxed
-                        ))
+                    // Try to link new node at the end of the list.
+                    if (last->next.compare_exchange_weak(next, newNode, std::memory_order_release,
+                                                         std::memory_order_relaxed))
                     {
-                        // Successfully added new node.
-                        // Try to swing tail.
-
-                        tail_.compare_exchange_weak(
-                            last,
-                            newNode,
-                            std::memory_order_release,
-                            std::memory_order_relaxed
-                        );
-
-
-                        size_.fetch_add(
-                            1,
-                            std::memory_order_relaxed
-                        );
-
-
+                        // Successfully added new node. Try to swing tail.
+                        tail_.compare_exchange_weak(last, newNode, std::memory_order_release,
+                                                    std::memory_order_relaxed);
+                        size_.fetch_add(1, std::memory_order_relaxed);
                         break;
                     }
                     else
                     {
-                        failedCAS_.fetch_add(
-                            1,
-                            std::memory_order_relaxed
-                        );
+                        failedCAS_.fetch_add(1, std::memory_order_relaxed);
                     }
                 }
                 else
                 {
-                    // Tail is lagging behind.
-                    // Try to advance it.
-
-                    tail_.compare_exchange_weak(
-                        last,
-                        next,
-                        std::memory_order_release,
-                        std::memory_order_relaxed
-                    );
+                    // Tail is lagging behind. Try to advance it.
+                    tail_.compare_exchange_weak(last, next, std::memory_order_release,
+                                                std::memory_order_relaxed);
                 }
             }
         }
     }
-
 
     bool dequeue(T& result)
     {
@@ -254,7 +145,6 @@ public:
                         return false;
                     }
 
-
                     // Tail is lagging behind. Advance it.
                     tail_.compare_exchange_weak(last, next, std::memory_order_release,
                                                 std::memory_order_relaxed);
@@ -267,15 +157,11 @@ public:
                         continue;
                     }
 
-
                     T* data = next->data.load(std::memory_order_acquire);
-
-
                     if (data == nullptr)
                     {
                         continue;
                     }
-
 
                     // Try to swing head to next node; next becomes the new dummy node.
                     if (head_.compare_exchange_weak(first, next, std::memory_order_release,
@@ -286,13 +172,11 @@ public:
                         size_.fetch_sub(1, std::memory_order_relaxed);
 
                         // Safe reclamation is intentionally disabled while studying the algorithm.
-
                         if (!isHazardous(first))
                         {
                             // TODO:
                             // delete first;
                         }
-
 
                         return true;
                     }
@@ -305,39 +189,26 @@ public:
         }
     }
 
-
     bool empty() const
     {
-        return size_.load(
-            std::memory_order_acquire
-        ) == 0;
+        return size_.load(std::memory_order_acquire) == 0;
     }
-
 
     size_t size() const
     {
-        return size_.load(
-            std::memory_order_acquire
-        );
+        return size_.load(std::memory_order_acquire);
     }
-
 
     size_t failedCAS() const
     {
-        return failedCAS_.load(
-            std::memory_order_acquire
-        );
+        return failedCAS_.load(std::memory_order_acquire);
     }
 };
 
 template<typename T>
-thread_local std::array<
-    std::atomic<typename LockFreeQueue<T>::Node*>,
-    LockFreeQueue<T>::MAX_HAZARD_POINTERS
->
-LockFreeQueue<T>::hazardPointers{};
-
+thread_local std::array<std::atomic<typename LockFreeQueue<T>::Node*>,
+                        LockFreeQueue<T>::MAX_HAZARD_POINTERS>
+    LockFreeQueue<T>::hazardPointers{};
 
 template<typename T>
-std::atomic<size_t>
-LockFreeQueue<T>::hazardPointerIndex{ 0 };
+std::atomic<size_t> LockFreeQueue<T>::hazardPointerIndex{ 0 };
