@@ -209,8 +209,7 @@ private:
             << " (confidence: " << signal.confidence << ")" << std::endl;
     }
 
-    // ToDo
-
+   
     void generateTradingSignals() {
         while (true) {
             // Periodic signal generation based on market conditions
@@ -325,3 +324,11 @@ int main() {
     std::cout << "Market processing simulation completed" << std::endl;
     return 0;
 }
+
+// TODO: Implement a coordinated shutdown for the long-running processing tasks.
+// processDataStream() and generateTradingSignals() currently run indefinitely and
+// do not observe the thread pool shutdown flag. This can block worker.join() during
+// DynamicThreadPool destruction. Moreover, the tasks access processor members through
+// `this`; those members may be destroyed before threadPool_, causing use-after-destruction
+// and access violations. Stop the tasks cooperatively and join the pool before releasing
+// the shared queue, price data, mutexes, and other processor resources.
