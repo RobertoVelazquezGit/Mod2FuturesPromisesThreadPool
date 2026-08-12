@@ -11,6 +11,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "LockFreeMemoOrdering", "Loc
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "IntegratedConcurrencyArchitecture", "IntegratedConcurrencyArchitecture\IntegratedConcurrencyArchitecture.vcxproj", "{C52918D7-182C-4C8D-9470-B1CA4725AAC4}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "AdvancedConcurrencyPatterns", "AdvancedConcurrencyPatterns\AdvancedConcurrencyPatterns.vcxproj", "{4BE35861-83A2-423F-A020-B4D422226140}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -51,6 +53,14 @@ Global
 		{C52918D7-182C-4C8D-9470-B1CA4725AAC4}.Release|x64.Build.0 = Release|x64
 		{C52918D7-182C-4C8D-9470-B1CA4725AAC4}.Release|x86.ActiveCfg = Release|Win32
 		{C52918D7-182C-4C8D-9470-B1CA4725AAC4}.Release|x86.Build.0 = Release|Win32
+		{4BE35861-83A2-423F-A020-B4D422226140}.Debug|x64.ActiveCfg = Debug|x64
+		{4BE35861-83A2-423F-A020-B4D422226140}.Debug|x64.Build.0 = Debug|x64
+		{4BE35861-83A2-423F-A020-B4D422226140}.Debug|x86.ActiveCfg = Debug|Win32
+		{4BE35861-83A2-423F-A020-B4D422226140}.Debug|x86.Build.0 = Debug|Win32
+		{4BE35861-83A2-423F-A020-B4D422226140}.Release|x64.ActiveCfg = Release|x64
+		{4BE35861-83A2-423F-A020-B4D422226140}.Release|x64.Build.0 = Release|x64
+		{4BE35861-83A2-423F-A020-B4D422226140}.Release|x86.ActiveCfg = Release|Win32
+		{4BE35861-83A2-423F-A020-B4D422226140}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
