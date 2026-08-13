@@ -88,7 +88,7 @@ public:
 
     // SOLUTION: Implement worker function that processes tasks from queue
     void workerFunction() {
-        while (!stopThreadPool.load()) {
+        while (true) {  // originally while (!stopThreadPool.load()) {
             function<void()> task;
 
             {
@@ -104,11 +104,9 @@ public:
                     break;
                 }
 
-                // Get task from queue
-                if (!taskQueue.empty()) {
-                    task = move(taskQueue.front());
-                    taskQueue.pop();
-                }
+                // The queue is guaranteed to be non-empty at this point.
+                task = move(taskQueue.front());
+                taskQueue.pop();
             }
 
             // Execute task outside of lock
@@ -164,6 +162,8 @@ bool atomicCompareAndSwap(atomic<int>& target, int expected, int desired) {
     return target.compare_exchange_strong(expected, desired);
 }
 
+// ToDo
+
 // ============================================================================
 // PART 4: Combining Patterns - Async Task Processing
 // ============================================================================
@@ -205,6 +205,8 @@ void testFuturesAndPromises() {
     promise<int> calcPromise;
     future<int> calcFuture = calcPromise.get_future();
 
+    // Move the promise into the thread because std::promise cannot be copied.
+    // The worker thread takes ownership and uses it to deliver the result.
     thread calcThread(asyncCalculation, move(calcPromise), 10);
 
     cout << "Waiting for async calculation..." << endl;
