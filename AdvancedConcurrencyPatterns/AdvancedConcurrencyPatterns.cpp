@@ -80,6 +80,10 @@ public:
 
     // SOLUTION: Initialize the thread pool
     void initializePool() {
+        // The stop flag is global in this example, so reset it when creating a new pool.
+        // Without this, a pool created after a previous shutdown exits before processing tasks.
+        stopThreadPool.store(false);
+
         for (int i = 0; i < numThreads; ++i) {
             workers.emplace_back(&SimpleThreadPool::workerFunction, this);
         }
@@ -161,8 +165,6 @@ void atomicIncrement(int iterations) {
 bool atomicCompareAndSwap(atomic<int>& target, int expected, int desired) {
     return target.compare_exchange_strong(expected, desired);
 }
-
-// ToDo
 
 // ============================================================================
 // PART 4: Combining Patterns - Async Task Processing
