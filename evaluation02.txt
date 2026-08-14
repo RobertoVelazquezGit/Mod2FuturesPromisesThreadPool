@@ -1,0 +1,59 @@
+What is the primary purpose of calling join() on a std::thread in C++? 
+To detach the thread from the main process
+To ensure the main thread waits for the thread to complete before proceeding #
+To create a new thread that runs independently
+To terminate the thread immediately
+
+Which synchronization mechanism is primarily used to prevent race conditions when multiple threads access shared data? 
+std::condition_variable
+std::atomic_flag
+std::mutex #
+std::promise
+
+What is the main advantage of using std::condition_variable in multithreaded programming?
+It automatically manages thread lifecycle and cleanup
+It prevents all forms of deadlock in multithreaded applications
+It automatically creates new threads when needed
+It allows threads to wait for specific conditions to be met before continuing execution #
+
+Which scenario is most likely to cause a deadlock in a multithreaded application? 
+A single thread accessing multiple resources sequentially
+Multiple threads reading from the same shared variable without synchronization
+Using std::condition_variable without proper mutex locking
+Two threads acquiring locks on resources in opposite orders #
+
+What is the primary benefit of using futures and promises in asynchronous programming?
+They guarantee faster execution than traditional threading
+They decouple task execution from result retrieval, enabling asynchronous processing #
+They eliminate the need for any synchronization mechanisms
+They automatically manage thread creation and destruction
+
+Why are thread pools beneficial in high-concurrency environments? 
+They automatically prevent race conditions in all scenarios
+They reduce overhead by reusing a fixed number of threads for multiple tasks #
+They create unlimited threads to handle all tasks simultaneously
+They guarantee that all tasks execute in a specific order
+
+What is the main characteristic of atomic operations in lock-free programming? 
+They complete without interference from other threads, ensuring data consistency #
+They can only be used with primitive data types like integers
+They automatically create backup copies of data before modification
+They require explicit mutex locking to ensure thread safety
+
+Which of the following is a recommended strategy for preventing deadlocks? 
+Always use detached threads to prevent resource conflicts
+Always acquire locks in a consistent hierarchical order across all threads #
+Avoid using any synchronization mechanisms in multithreaded code
+Use as many locks as possible to ensure maximum thread safety
+
+What is a potential consequence of improperly managed detached threads? 
+Resource leaks and undefined behavior if accessed resources are deallocated #
+Improved performance due to reduced synchronization overhead
+Automatic thread termination when the main program ends
+Guaranteed thread safety without additional synchronization
+
+When should lock-free programming be preferred over traditional locking mechanisms? 
+When working exclusively with single-threaded applications
+When strict sequential execution is needed in the system
+When complex synchronized data access patterns are required
+When minimizing thread wait times and maximizing throughput are critical #
