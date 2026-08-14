@@ -1,0 +1,38 @@
+Which of the following best describes the main advantage of using futures and promises in C++ concurrency?
+They convert single-threaded programs into multithreaded ones automatically.
+They offer synchronous data handling with quicker execution speeds.
+They decouple task execution from result retrieval, allowing asynchronous processing. #
+They eliminate the need for locking in multithreaded environments.
+
+What is one key benefit of using a thread pool in a high-concurrency environment?
+It allows each task to run on its own dedicated thread without limits.
+It guarantees faster execution because all threads run simultaneously.
+It reduces the overhead associated with frequent thread creation and destruction. #
+It simplifies debugging by running tasks sequentially.
+
+How do atomic operations contribute to lock-free programming in C++?
+They allow operations on shared data that complete without interference from other threads. #
+They decouple data processing from resource management, prioritizing performance.
+They use mutexes effectively to manage complex data structures.
+They prevent any changes to shared data, ensuring it remains constant.
+
+When should a lock-free programming approach be chosen over traditional locking mechanisms?
+When tasks involve complex synchronized data access patterns.
+When there is a need for strict sequential execution in a system.
+When minimizing thread wait times and maximizing throughput are critical. #
+When dealing with large datasets that require extensive processing.
+
+You are tasked with designing a real-time analytics system that processes thousands of incoming events per second.
+Explain how you would use futures and promises to handle asynchronous tasks in this system.
+Describe how a thread pool could improve performance compared to creating new threads for every task.
+Discuss one example where atomic operations might be more efficient than using locks.
+Finally, explain how you would decide when a simple concurrency model (e.g., individual threads with join/detach)
+is sufficient versus when a more advanced approach (thread pool, task scheduler, or lock-free programming) is necessary.
+
+In a real-time analytics system that processes thousands of events per second, I would use futures and promises to decouple task execution from result retrieval. Worker threads could process incoming events asynchronously and set the results through std::promise objects, while other parts of the system retrieve those results through the associated std::future objects. This approach allows the system to continue processing new events without blocking while waiting for previous computations to complete.
+
+To improve performance, I would use a thread pool instead of creating a new thread for every task. Thread creation and destruction are relatively expensive operations, especially under high load. A thread pool maintains a fixed set of worker threads that continuously pull tasks from a queue. This reduces overhead, improves resource utilization, and prevents the system from creating an excessive number of threads that could overwhelm the scheduler.
+
+An example where atomic operations are more efficient than locks is maintaining a shared event counter. If multiple threads only need to increment a counter, using std::atomic<uint64_t> with fetch_add() avoids the overhead of acquiring and releasing a mutex. Since the operation is performed atomically by the hardware, contention is reduced and throughput is typically higher.
+
+When deciding between a simple concurrency model and a more advanced approach, I would consider the application's complexity, performance requirements, and scalability needs. A simple model based on individual threads with join() or detach() is often sufficient for a small number of long-running tasks where thread management overhead is negligible. However, if the application must handle a large number of short-lived tasks, a thread pool or task scheduler becomes more appropriate to improve efficiency and resource management. For extremely latency-sensitive or high-throughput systems where lock contention becomes a bottleneck, I would evaluate lock-free programming using atomic operations and concurrent data structures. In practice, I would start with the simplest solution that meets the requirements and only move to more advanced concurrency techniques when profiling demonstrates a clear need for them.
