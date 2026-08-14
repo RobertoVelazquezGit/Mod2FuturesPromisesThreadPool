@@ -1,0 +1,126 @@
+Introduction
+Welcome to the Module 2 Reference Guide—your essential resource for mastering concurrency and multithreading in C++. This guide consolidates all key concepts covered in the module into a clear, quick-access format. Whether you’re revisiting best practices, debugging concurrent code, or optimizing performance, this reference will help you confidently design and manage multithreaded applications.
+
+Threads and Their Importance
+Definition: A thread is the smallest unit of execution within a process, enabling tasks to run concurrently.
+
+Why use threads?
+
+Responsiveness: Keep applications interactive while background tasks execute.
+
+Parallelism: Exploit multi-core processors for faster execution.
+
+Scalability: Handle multiple user requests or data streams simultaneously.
+
+Thread Creation in C++
+Threads are typically created using std::thread from the <thread> library.
+
+#include <iostream>
+
+#include <thread>
+
+using namespace std;
+
+void task() {
+
+    cout << "Hello from thread!" << endl;
+
+}
+
+int main() {
+
+    thread t(task);   // Start thread
+
+    t.join();         // Wait for thread to finish
+
+    return 0;
+
+}
+
+join(): Waits for a thread to complete.
+
+detach(): Allows thread to run independently (use carefully to avoid leaks).
+
+Thread Lifecycle
+Created → Running → Blocked/Waiting → Terminated
+
+Always ensure proper join or detach before program exit.
+
+Use RAII patterns (e.g., ThreadGuard) to manage lifecycle safely.
+
+Common Threading Issues
+Race Conditions: Occur when multiple threads modify shared data simultaneously.
+
+Solution: Use std::mutex with lock_guard.
+
+std::mutex m;
+
+m.lock();
+
+// critical section
+
+m.unlock();
+
+Deadlocks: Threads wait on each other indefinitely.
+
+Solution: Acquire locks in consistent order, minimize nested locks.
+
+Synchronization Mechanisms
+Mutex (std::mutex): Prevents multiple threads from accessing shared resources simultaneously.
+
+Lock Guard (std::lock_guard): Ensures mutex is unlocked automatically when scope ends.
+
+Atomic Operations (std::atomic): Lightweight way to manage shared counters without full locks.
+
+Condition Variables (std::condition_variable): Allow threads to wait for signals.
+
+Parallel Data Processing Example
+Distributing work across multiple threads can greatly reduce computation time.
+
+#include <iostream>
+
+#include <thread>
+
+#include <vector>
+
+using namespace std;
+
+void process(int id) {
+
+    cout << "Thread " << id << " is working...\n";
+
+}
+
+int main() {
+
+    vector<thread> workers;
+
+    for (int i = 0; i < 4; i++) {
+
+        workers.emplace_back(process, i);
+
+    }
+
+    for (auto& t : workers) t.join();
+
+    return 0;
+
+}
+
+Best Practices for Multithreading
+Limit the number of threads—too many increases overhead.
+
+Always join() or detach() before program exit.
+
+Prefer RAII for resource cleanup (e.g., ThreadGuard).
+
+Match thread count to workload type:
+
+CPU-bound → use hardware_concurrency().
+
+I/O-bound → thread count may exceed core count.
+
+Handle exceptions inside threads to prevent silent failures.
+
+Conclusion
+Concurrency and multithreading elevate your C++ applications to the next level of performance, scalability, and responsiveness. By mastering thread lifecycle, synchronization, and best practices, you can confidently design robust systems for real-world, performance-critical scenarios. Keep this guide handy as your quick-reference companion when building concurrent solutions.
